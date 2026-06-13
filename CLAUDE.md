@@ -1,4 +1,4 @@
-# AllinDebuger
+# JkeyToys
 
 PySide6 UART 上位机调试工具，通过自定义帧协议与嵌入式下位机串口通信。
 

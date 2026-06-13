@@ -16,6 +16,7 @@ env/
 *.swo
 
 .claude/
+.remember/
 .DS_Store
 Thumbs.db
 

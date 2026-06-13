@@ -1,4 +1,4 @@
-# AllinDebuger
+# JkeyToys
 
 基于 PySide6 的 UART 上位机调试工具，支持自定义帧协议通信和原始数据打印。
 
@@ -29,7 +29,7 @@
 ## 项目结构
 
 ```
-AllinDebuger/
+JkeyToys/
 ├── main.py              # 入口
 ├── requirements.txt     # Python 依赖
 ├── core/

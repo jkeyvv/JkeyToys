@@ -35,11 +35,11 @@ DEFAULT_COMMANDS = [
 
 
 class MainWindow(QMainWindow):
-    """AllinDebuger 主窗口."""
+    """JkeyToys 主窗口."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AllinDebuger - UART 调试工具")
+        self.setWindowTitle("JkeyToys - UART 调试工具")
         self.setMinimumSize(1000, 650)
         self.resize(1200, 750)
 
@@ -249,8 +249,8 @@ class MainWindow(QMainWindow):
     def _show_about(self):
         QMessageBox.about(
             self,
-            "关于 AllinDebuger",
-            "AllinDebuger v1.0\n\n"
+            "关于 JkeyToys",
+            "JkeyToys v1.0\n\n"
             "基于 PySide6 的 UART 调试工具\n"
             "支持自定义帧协议通信和原始数据打印\n\n"
             "协议格式: AA 55 | LEN | CMD | DATA | CRC16 | 0D 0A",

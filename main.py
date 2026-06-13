@@ -1,4 +1,4 @@
-"""AllinDebuger - PySide6 UART 调试工具入口."""
+"""JkeyToys - PySide6 UART 调试工具入口."""
 
 import sys
 from PySide6.QtWidgets import QApplication
@@ -7,7 +7,7 @@ from ui.main_window import MainWindow
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("AllinDebuger")
+    app.setApplicationName("JkeyToys")
     app.setApplicationVersion("1.0")
 
     window = MainWindow()
