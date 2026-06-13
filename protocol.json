@@ -1,0 +1,115 @@
+{
+  "protocol": {
+    "header": "AA55",
+    "tail": "0D0A",
+    "length_size": 1,
+    "cmd_size": 1,
+    "crc_size": 2,
+    "crc_type": "CRC16-MODBUS",
+    "length_includes_cmd": true,
+    "byte_order": "big",
+    "query_timeout_ms": 3000
+  },
+  "commands": [
+    {
+      "name": "查询温度",
+      "cmd": "02",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "传感器ID",
+          "size": 1
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "温度",
+          "size": 2
+        },
+        {
+          "name": "湿度",
+          "size": 2
+        },
+        {
+          "name": "状态",
+          "size": 1
+        },
+        {
+          "name": "保留",
+          "size": 3
+        }
+      ],
+      "tx_data_len": 1,
+      "rx_data_len": 8
+    },
+    {
+      "name": "查询版本",
+      "cmd": "01",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "主版本",
+          "size": 1
+        },
+        {
+          "name": "次版本",
+          "size": 1
+        },
+        {
+          "name": "修订号",
+          "size": 2
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 4
+    },
+    {
+      "name": "读取配置",
+      "cmd": "03",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "配置",
+          "size": 2
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 2
+    },
+    {
+      "name": "心跳",
+      "cmd": "FF",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [],
+      "tx_data_len": 0,
+      "rx_data_len": 0
+    },
+    {
+      "name": "控制电机",
+      "cmd": "09",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "方向",
+          "size": 1
+        },
+        {
+          "name": "步数",
+          "size": 1
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "结果",
+          "size": 1
+        }
+      ],
+      "tx_data_len": 2,
+      "rx_data_len": 1
+    }
+  ],
+  "buttons": []
+}
