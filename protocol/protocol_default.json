@@ -1,0 +1,367 @@
+{
+  "protocol": {
+    "header": "AA55",
+    "dummy_byte": "",
+    "tail": "0D0A",
+    "length_size": 1,
+    "cmd_size": 1,
+    "crc_size": 1,
+    "crc_type": "XOR",
+    "cmd_before_len": true,
+    "byte_order": "big",
+    "query_timeout_ms": 3000
+  },
+  "commands": [
+    {
+      "name": "查询版本",
+      "cmd": "01",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "主版本",
+          "size": 1
+        },
+        {
+          "name": "次版本",
+          "size": 1
+        },
+        {
+          "name": "修订号",
+          "size": 2
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 4
+    },
+    {
+      "name": "查询设备信息",
+      "cmd": "02",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "设备ID",
+          "size": 2
+        },
+        {
+          "name": "硬件版本",
+          "size": 1
+        },
+        {
+          "name": "序列号",
+          "size": 4
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 7
+    },
+    {
+      "name": "查询温湿度",
+      "cmd": "03",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "传感器ID",
+          "size": 1
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "温度",
+          "size": 2
+        },
+        {
+          "name": "湿度",
+          "size": 2
+        },
+        {
+          "name": "状态",
+          "size": 1
+        },
+        {
+          "name": "保留",
+          "size": 3
+        }
+      ],
+      "tx_data_len": 1,
+      "rx_data_len": 8
+    },
+    {
+      "name": "读取配置",
+      "cmd": "04",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "配置项",
+          "size": 1
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "值",
+          "size": 2
+        }
+      ],
+      "tx_data_len": 1,
+      "rx_data_len": 2
+    },
+    {
+      "name": "写入配置",
+      "cmd": "05",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "配置项",
+          "size": 1
+        },
+        {
+          "name": "值",
+          "size": 2
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "结果",
+          "size": 1
+        }
+      ],
+      "tx_data_len": 3,
+      "rx_data_len": 1
+    },
+    {
+      "name": "控制电机",
+      "cmd": "10",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "方向",
+          "size": 1
+        },
+        {
+          "name": "速度",
+          "size": 2
+        },
+        {
+          "name": "步数",
+          "size": 2
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "结果",
+          "size": 1
+        },
+        {
+          "name": "实际步数",
+          "size": 2
+        }
+      ],
+      "tx_data_len": 5,
+      "rx_data_len": 3
+    },
+    {
+      "name": "GPIO控制",
+      "cmd": "11",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "引脚",
+          "size": 1
+        },
+        {
+          "name": "电平",
+          "size": 1
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "结果",
+          "size": 1
+        }
+      ],
+      "tx_data_len": 2,
+      "rx_data_len": 1
+    },
+    {
+      "name": "批量读取",
+      "cmd": "20",
+      "type": "查询",
+      "tx_fields": [
+        {
+          "name": "起始地址",
+          "size": 2
+        },
+        {
+          "name": "长度",
+          "size": 1
+        }
+      ],
+      "rx_fields": [
+        {
+          "name": "数据",
+          "size": 8
+        }
+      ],
+      "tx_data_len": 3,
+      "rx_data_len": 8
+    },
+    {
+      "name": "设备复位",
+      "cmd": "F0",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "确认",
+          "size": 1
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 1
+    },
+    {
+      "name": "心跳",
+      "cmd": "FF",
+      "type": "查询",
+      "tx_fields": [],
+      "rx_fields": [],
+      "tx_data_len": 0,
+      "rx_data_len": 0
+    },
+    {
+      "name": "温度报警",
+      "cmd": "A0",
+      "type": "上报",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "传感器ID",
+          "size": 1
+        },
+        {
+          "name": "当前温度",
+          "size": 2
+        },
+        {
+          "name": "阈值",
+          "size": 2
+        },
+        {
+          "name": "报警类型",
+          "size": 1
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 6
+    },
+    {
+      "name": "按键事件",
+      "cmd": "A1",
+      "type": "上报",
+      "tx_fields": [],
+      "rx_fields": [
+        {
+          "name": "按键ID",
+          "size": 1
+        },
+        {
+          "name": "动作",
+          "size": 1
+        },
+        {
+          "name": "长按时间",
+          "size": 2
+        }
+      ],
+      "tx_data_len": 0,
+      "rx_data_len": 4
+    }
+  ],
+  "buttons": [
+    {
+      "cmd": "10",
+      "name": "控制电机",
+      "rx_data_len": 3,
+      "rx_fields": [
+        {
+          "name": "结果",
+          "size": 1
+        },
+        {
+          "name": "实际步数",
+          "size": 2
+        }
+      ],
+      "tx_data": "0000000000",
+      "tx_data_len": 5,
+      "tx_fields": [
+        {
+          "name": "方向",
+          "size": 1
+        },
+        {
+          "name": "速度",
+          "size": 2
+        },
+        {
+          "name": "步数",
+          "size": 2
+        }
+      ]
+    },
+    {
+      "cmd": "03",
+      "name": "查询温湿度",
+      "rx_data_len": 8,
+      "rx_fields": [
+        {
+          "name": "温度",
+          "size": 2
+        },
+        {
+          "name": "湿度",
+          "size": 2
+        },
+        {
+          "name": "状态",
+          "size": 1
+        },
+        {
+          "name": "保留",
+          "size": 3
+        }
+      ],
+      "tx_data": "00",
+      "tx_data_len": 1,
+      "tx_fields": [
+        {
+          "name": "传感器ID",
+          "size": 1
+        }
+      ]
+    },
+    {
+      "cmd": "01",
+      "name": "查询版本",
+      "rx_data_len": 4,
+      "rx_fields": [
+        {
+          "name": "主版本",
+          "size": 1
+        },
+        {
+          "name": "次版本",
+          "size": 1
+        },
+        {
+          "name": "修订号",
+          "size": 2
+        }
+      ],
+      "tx_data": "",
+      "tx_data_len": 0,
+      "tx_fields": []
+    }
+  ]
+}

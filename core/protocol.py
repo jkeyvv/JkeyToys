@@ -1,19 +1,17 @@
 """自定义帧协议编解码模块.
 
-协议格式:
-    帧头 + 长度 + 命令 + 数据 + CRC + 帧尾
+协议格式（由 ProtocolConfig 定义）:
+    cmd_before_len=True:  AA 55 | CMD(1B) | LEN(1B) | DATA... | CRC16(2B) | 0D 0A
+    cmd_before_len=False: AA 55 | LEN(1B) | CMD(1B) | DATA... | CRC16(2B) | 0D 0A
 
-    各字段大小和内容由 ProtocolConfig 定义，默认:
-    AA 55 | LEN(1B) | CMD(1B) | DATA... | CRC16(2B) | 0D 0A
-
-    长度字段 = CMD + DATA（默认），可通过 length_includes_* 配置
+    LEN 表示 LEN 字段后到 CRC 前的字节数。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.crc import crc16_modbus_bytes
+from core.crc import crc16_modbus_bytes, xor_checksum
 from core.protocol_config import ProtocolConfig, DEFAULT_CONFIG
 
 
@@ -63,27 +61,28 @@ class Protocol:
         """
         cfg = self._config
 
-        # 计算长度字段值（LEN 始终包含 DATA，可选包含 CMD）
-        length = len(data)
-        if cfg.length_includes_cmd:
-            length += cfg.cmd_size
-
-        # 构建长度字段
-        length_bytes = length.to_bytes(cfg.length_size, cfg.byte_order)
-
         # 构建命令字段
         cmd_bytes = cmd.to_bytes(cfg.cmd_size, cfg.byte_order)
 
-        # 组装 payload = LEN + CMD + DATA
-        payload = length_bytes + cmd_bytes + data
-
-        # CRC
-        if cfg.crc_size > 0:
-            crc = self._calc_crc(payload)
+        # LEN = LEN 字段后到 CRC 前的字节数
+        if cfg.cmd_before_len:
+            # 帧头 | CMD | LEN | DATA → LEN = DATA
+            length = len(data)
         else:
-            crc = b""
+            # 帧头 | LEN | CMD | DATA → LEN = CMD + DATA
+            length = cfg.cmd_size + len(data)
 
-        return cfg.header + payload + crc + cfg.tail
+        length_bytes = length.to_bytes(cfg.length_size, cfg.byte_order)
+
+        # CRC（对 CMD + DATA 计算）
+        payload = cmd_bytes + data
+        crc = self._calc_crc(payload) if cfg.crc_size > 0 else b""
+
+        # 按顺序组装：header + dummy + (CMD+LEN 或 LEN+CMD) + DATA + CRC + tail
+        if cfg.cmd_before_len:
+            return cfg.header + cfg.dummy_byte + cmd_bytes + length_bytes + data + crc + cfg.tail
+        else:
+            return cfg.header + cfg.dummy_byte + length_bytes + cmd_bytes + data + crc + cfg.tail
 
     def decode(self, buffer: bytes) -> tuple[list[Frame], bytes]:
         """从缓冲区中解析所有完整帧.
@@ -113,7 +112,9 @@ class Protocol:
         """
         cfg = self._config
         header_size = len(cfg.header)
+        dummy_size = len(cfg.dummy_byte)
         tail_size = len(cfg.tail)
+        after_header = header_size + dummy_size  # header + dummy 之后才是 CMD/LEN
 
         # 查找帧头
         idx = buffer.find(cfg.header)
@@ -124,46 +125,59 @@ class Protocol:
         if idx > 0:
             buffer = buffer[idx:]
 
-        # 最小帧 = 帧头 + 长度字段 + CRC + 帧尾
-        min_size = header_size + cfg.length_size + cfg.crc_size + tail_size
+        # 最小帧 = 帧头 + dummy + CMD/LEN 字段 + CRC + 帧尾
+        min_size = after_header + cfg.cmd_size + cfg.length_size + cfg.crc_size + tail_size
         if len(buffer) < min_size:
             return None, buffer
 
-        # 解析长度字段
-        length = int.from_bytes(buffer[header_size: header_size + cfg.length_size], cfg.byte_order)
+        if cfg.cmd_before_len:
+            # 帧头 | dummy | CMD | LEN | DATA | CRC | 帧尾，LEN = DATA
+            cmd = int.from_bytes(buffer[after_header: after_header + cfg.cmd_size], cfg.byte_order)
+            length = int.from_bytes(
+                buffer[after_header + cfg.cmd_size: after_header + cfg.cmd_size + cfg.length_size],
+                cfg.byte_order,
+            )
+            frame_size = after_header + cfg.cmd_size + cfg.length_size + length + cfg.crc_size + tail_size
+            if len(buffer) < frame_size:
+                return None, buffer
 
-        # 完整帧大小 = 帧头 + 长度字段 + length(=CMD+DATA) + CRC + 帧尾
-        frame_size = header_size + cfg.length_size + length + cfg.crc_size + tail_size
-        if len(buffer) < frame_size:
-            return None, buffer
+            raw = buffer[:frame_size]
+            data_start = after_header + cfg.cmd_size + cfg.length_size
+            data = raw[data_start: data_start + length]
 
-        # 提取完整帧
-        raw = buffer[:frame_size]
-        payload_start = header_size + cfg.length_size
-        payload = raw[payload_start: payload_start + length]
-
-        # CRC 校验
-        if cfg.crc_size > 0:
-            received_crc = raw[payload_start + length: payload_start + length + cfg.crc_size]
-            expected_crc = self._calc_crc(payload)
-            if received_crc != expected_crc:
-                return None, buffer[header_size:]
+            if cfg.crc_size > 0:
+                payload = raw[after_header: after_header + cfg.cmd_size] + data
+                received_crc = raw[data_start + length: data_start + length + cfg.crc_size]
+                if received_crc != self._calc_crc(payload):
+                    return None, buffer[header_size:]
         else:
-            received_crc = b""
+            # 帧头 | dummy | LEN | CMD | DATA | CRC | 帧尾，LEN = CMD + DATA
+            length = int.from_bytes(buffer[after_header: after_header + cfg.length_size], cfg.byte_order)
+            frame_size = after_header + cfg.length_size + length + cfg.crc_size + tail_size
+            if len(buffer) < frame_size:
+                return None, buffer
+
+            raw = buffer[:frame_size]
+            payload_start = after_header + cfg.length_size
+            payload = raw[payload_start: payload_start + length]
+
+            if cfg.crc_size > 0:
+                received_crc = raw[payload_start + length: payload_start + length + cfg.crc_size]
+                if received_crc != self._calc_crc(payload):
+                    return None, buffer[header_size:]
+
+            cmd = int.from_bytes(payload[: cfg.cmd_size], cfg.byte_order)
+            data = payload[cfg.cmd_size:]
 
         # 帧尾校验
         tail = raw[-tail_size:]
         if tail != cfg.tail:
             return None, buffer[header_size:]
 
-        # 从 payload 中解析 CMD 和 DATA
-        cmd = int.from_bytes(payload[: cfg.cmd_size], cfg.byte_order)
-        data = payload[cfg.cmd_size:]
-
         return Frame(cmd=cmd, data=data, raw=raw), buffer[frame_size:]
 
     def _calc_crc(self, data: bytes) -> bytes:
-        """根据配置计算 CRC."""
+        """根据配置计算校验值."""
         crc_type = self._config.crc_type.upper()
 
         if crc_type == "CRC16-MODBUS":
@@ -172,6 +186,8 @@ class Protocol:
             return self._crc16_ccitt_bytes(data)
         elif crc_type == "CRC32":
             return self._crc32_bytes(data)
+        elif crc_type == "XOR":
+            return xor_checksum(data)
         else:
             # 默认使用 CRC16-MODBUS
             return crc16_modbus_bytes(data)

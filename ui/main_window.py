@@ -21,17 +21,9 @@ from core.protocol_config import ProtocolConfig
 
 
 # 协议配置文件路径
-PROTOCOL_FILE = Path(__file__).parent.parent / "protocol.json"
-
-# 默认命令
-DEFAULT_COMMANDS = [
-    {"name": "查询版本", "cmd": "01", "type": "查询", "tx_data_len": 0, "rx_data_len": 4,
-     "tx_fields": [], "rx_fields": [{"name": "主版本", "size": 1}, {"name": "次版本", "size": 1}, {"name": "修订号", "size": 2}]},
-    {"name": "查询状态", "cmd": "02", "type": "查询", "tx_data_len": 0, "rx_data_len": 8,
-     "tx_fields": [], "rx_fields": [{"name": "温度", "size": 2}, {"name": "湿度", "size": 2}, {"name": "状态", "size": 1}, {"name": "保留", "size": 3}]},
-    {"name": "读取配置", "cmd": "03", "type": "查询", "tx_data_len": 0, "rx_data_len": 0, "tx_fields": [], "rx_fields": []},
-    {"name": "心跳", "cmd": "FF", "type": "查询", "tx_data_len": 0, "rx_data_len": 0, "tx_fields": [], "rx_fields": []},
-]
+PROTOCOL_DIR = Path(__file__).parent.parent / "protocol"
+PROTOCOL_FILE = PROTOCOL_DIR / "protocol.json"
+DEFAULT_PROTOCOL_FILE = PROTOCOL_DIR / "protocol_default.json"
 
 
 class MainWindow(QMainWindow):
@@ -157,18 +149,22 @@ class MainWindow(QMainWindow):
     # ========== 协议文件读写 ==========
 
     def _load_protocol_file(self) -> tuple[ProtocolConfig, list[dict], list[dict]]:
-        """加载 protocol.json，首次用默认值."""
+        """加载 protocol.json，首次运行从 protocol_default.json 复制."""
+        if not PROTOCOL_FILE.exists() and DEFAULT_PROTOCOL_FILE.exists():
+            import shutil
+            shutil.copy2(DEFAULT_PROTOCOL_FILE, PROTOCOL_FILE)
+
         if PROTOCOL_FILE.exists():
             try:
                 with open(PROTOCOL_FILE, "r", encoding="utf-8") as f:
                     raw = json.load(f)
                 config = ProtocolConfig.from_dict(raw.get("protocol", {}))
-                commands = raw.get("commands", DEFAULT_COMMANDS)
+                commands = raw.get("commands", [])
                 buttons = raw.get("buttons", [])
                 return config, commands, buttons
             except Exception:
                 pass
-        return ProtocolConfig(), DEFAULT_COMMANDS, []
+        return ProtocolConfig(), [], []
 
     def _save_protocol_file(self):
         """保存当前协议配置、命令模板和按钮实例到 protocol.json."""
@@ -293,7 +289,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QFileDialog
 
         path, _ = QFileDialog.getOpenFileName(
-            self, "导入协议配置", "", "JSON 文件 (*.json);;所有文件 (*)"
+            self, "导入协议配置", str(PROTOCOL_DIR), "JSON 文件 (*.json);;所有文件 (*)"
         )
         if not path:
             return
@@ -333,7 +329,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QFileDialog
 
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出协议配置", "protocol_export.json", "JSON 文件 (*.json);;所有文件 (*)"
+            self, "导出协议配置", str(PROTOCOL_DIR / "protocol_export.json"), "JSON 文件 (*.json);;所有文件 (*)"
         )
         if not path:
             return

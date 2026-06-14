@@ -21,3 +21,6 @@ env/
 Thumbs.db
 
 *.log
+
+# 用户协议配置（运行时生成，不跟踪）
+protocol/protocol.json

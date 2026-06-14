@@ -619,25 +619,16 @@ class ProtocolPanel(QWidget):
 
         tx_warn = ""
         if btn.tx_data_len > 0 and len(data_bytes) != btn.tx_data_len:
-            tx_warn = f" ⚠长度不匹配"
+            tx_warn = " ⚠长度不匹配"
 
-        # 构建完整消息
-        msg = f"{btn.query_name} │ CMD=0x{cmd:02X} │ DATA={data_bytes.hex(' ').upper() or '空'}{tx_warn}"
+        # 构建消息：命令名 + 字段内容
+        fields_text = self._format_fields(data_bytes, btn.tx_fields) if btn.tx_fields else ""
+        msg = f"{btn.query_name}"
+        if fields_text:
+            msg += f" │ {fields_text}"
+        msg += tx_warn
 
-        # 主消息
-        self._append_log("TX", msg, QColor("#FFA500") if tx_warn else QColor("#4FC3F7"))
-
-        # 字段解析（在 RAW 数据之前）
-        if btn.tx_fields:
-            fields_text = self._format_fields(data_bytes, btn.tx_fields)
-            if fields_text:
-                self._append_log("", f"  └─ {fields_text}", QColor("#888"))
-            else:
-                field_names = [f"{f['name']}:{f.get('size', 0)}B" for f in btn.tx_fields if f.get('size', 0) >= 1]
-                if field_names:
-                    self._append_log("", f"  └─ {' │ '.join(field_names)} (数据为空)", QColor("#888"))
-        elif data_bytes:
-            self._append_log("", f"  └─ DATA={data_bytes.hex(' ').upper()}", QColor("#888"))
+        self._append_log("TX", msg, QColor("#FFA500") if tx_warn else QColor("#4FC3F7"), name=btn.query_name)
 
         # RAW 数据
         if frame_hex:
@@ -655,16 +646,15 @@ class ProtocolPanel(QWidget):
 
             warn = self._check_rx_data_len(pending.btn, len(frame.data))
             warn_str = " ⚠长度不匹配" if warn else ""
-            msg = f"{pending.name} │ CMD=0x{frame.cmd:02X} │ DATA={frame.data_hex}{warn_str}"
 
-            # 主消息
-            self._append_log("RX", msg, QColor("#FFA500") if warn else QColor("#81C784"))
+            # 命令名 + 字段内容
+            fields_text = self._format_fields(frame.data, pending.btn.rx_fields) if pending.btn.rx_fields else ""
+            msg = f"{pending.name}"
+            if fields_text:
+                msg += f" │ {fields_text}"
+            msg += warn_str
 
-            # 字段解析
-            if pending.btn.rx_fields:
-                fields_text = self._format_fields(frame.data, pending.btn.rx_fields)
-                if fields_text:
-                    self._append_log("", f"  └─ {fields_text}", QColor("#888"))
+            self._append_log("RX", msg, QColor("#FFA500") if warn else QColor("#81C784"), name=pending.name)
 
             # RAW 数据
             if frame.raw_hex:
@@ -679,17 +669,14 @@ class ProtocolPanel(QWidget):
             if rx_data_len > 0 and len(frame.data) != rx_data_len:
                 warn = " ⚠长度不匹配"
 
-            display_name = report_name or f"未知"
-            msg = f"{display_name} │ CMD=0x{frame.cmd:02X} │ DATA={frame.data_hex}{warn}"
+            display_name = report_name or "未知"
+            fields_text = self._format_fields(frame.data, rx_fields) if rx_fields else ""
+            msg = f"{display_name}"
+            if fields_text:
+                msg += f" │ {fields_text}"
+            msg += warn
 
-            # 主消息
-            self._append_log("上报", msg, QColor("#FFA500") if warn else QColor("#FF9800"))
-
-            # 字段解析
-            if rx_fields:
-                fields_text = self._format_fields(frame.data, rx_fields)
-                if fields_text:
-                    self._append_log("", f"  └─ {fields_text}", QColor("#888"))
+            self._append_log("RX", msg, QColor("#FFA500") if warn else QColor("#FF9800"), name=display_name)
 
             # RAW 数据
             if frame.raw_hex:
@@ -765,16 +752,12 @@ class ProtocolPanel(QWidget):
     def _on_query_timeout(self, cmd: int, name: str):
         self._pending_queries = [pq for pq in self._pending_queries if not (pq.cmd == cmd and pq.name == name)]
         self._count_timeout += 1
-        self._append_log(
-            "超时",
-            f"{name} │ CMD=0x{cmd:02X} │ 无响应",
-            QColor("#f44336"),
-        )
+        self._append_log("TO", name, QColor("#f44336"), name=name)
         self._update_stats()
 
     # ========== 日志 ==========
 
-    def _append_log(self, direction: str, message: str, color: QColor):
+    def _append_log(self, direction: str, message: str, color: QColor, name: str = ""):
         cursor = self.txt_log.textCursor()
         cursor.movePosition(QTextCursor.End)
 
@@ -788,16 +771,28 @@ class ProtocolPanel(QWidget):
             fmt_dir = QTextCharFormat()
             fmt_dir.setForeground(color)
             fmt_dir.setFontWeight(QFont.Bold)
-            cursor.insertText(f"{direction:4s} ", fmt_dir)
+            cursor.insertText(f"{direction:2s} ", fmt_dir)
 
-            fmt_msg = QTextCharFormat()
-            fmt_msg.setForeground(QColor("#d4d4d4"))
-            cursor.insertText(message, fmt_msg)
+            if name:
+                # 命令名称用醒目颜色
+                fmt_name = QTextCharFormat()
+                fmt_name.setForeground(QColor("#E0E0E0"))
+                fmt_name.setFontWeight(QFont.Bold)
+                cursor.insertText(name, fmt_name)
+                # 剩余部分（ │ 字段内容...）
+                rest = message[len(name):]
+                fmt_msg = QTextCharFormat()
+                fmt_msg.setForeground(QColor("#888"))
+                cursor.insertText(rest, fmt_msg)
+            else:
+                fmt_msg = QTextCharFormat()
+                fmt_msg.setForeground(QColor("#d4d4d4"))
+                cursor.insertText(message, fmt_msg)
         else:
-            # 子消息：缩进对齐命令名称（[HH:MM:SS.mmm] TX   = 21字符）
+            # 子消息：缩进对齐（[HH:MM:SS.mmm] TX   = 21字符）
             fmt_msg = QTextCharFormat()
             fmt_msg.setForeground(color)
-            cursor.insertText(f"                     {message}", fmt_msg)
+            cursor.insertText(f"                 {message}", fmt_msg)
 
         cursor.insertText("\n")
 

@@ -1,4 +1,4 @@
-"""CRC16-MODBUS 校验计算模块."""
+"""校验算法模块 — CRC16-MODBUS / XOR."""
 
 
 def _build_table() -> list[int]:
@@ -37,3 +37,11 @@ def crc16_modbus_bytes(data: bytes | bytearray) -> bytes:
     """计算 CRC16-MODBUS 并返回低字节在前的 2 字节."""
     val = crc16_modbus(data)
     return bytes([val & 0xFF, (val >> 8) & 0xFF])
+
+
+def xor_checksum(data: bytes | bytearray) -> bytes:
+    """计算 XOR 校验，返回 1 字节."""
+    result = 0
+    for byte in data:
+        result ^= byte
+    return bytes([result])
