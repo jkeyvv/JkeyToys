@@ -18,6 +18,7 @@ from ui.protocol_panel import ProtocolPanel
 from core.serial_worker import SerialWorker
 from core.protocol import Protocol
 from core.protocol_config import ProtocolConfig
+from version import __version__
 
 
 # 协议配置文件路径
@@ -246,7 +247,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于 JkeyToys",
-            "JkeyToys v1.0\n\n"
+            f"JkeyToys v{__version__}\n\n"
             "基于 PySide6 的 UART 调试工具\n"
             "支持自定义帧协议通信和原始数据打印\n\n"
             "协议格式: AA 55 | LEN | CMD | DATA | CRC16 | 0D 0A",
