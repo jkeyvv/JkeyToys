@@ -1,4 +1,4 @@
-# JkeyToys v1.0.1
+# JkeyToys v1.0.2
 
 基于 PySide6 的 UART 上位机调试工具，支持自定义帧协议通信和原始数据打印。
 
