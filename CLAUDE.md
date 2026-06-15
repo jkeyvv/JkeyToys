@@ -49,21 +49,22 @@ SerialWorker ──error/connection──> StatusBar + DataPanel
 
 ```
 帧头 | CMD | LEN | DATA | XOR | 帧尾
-AA55 | 1B  | 1B  | NB   | 1B  | 0D0A
+AA555AA5 | 2B  | 2B  | NB   | 1B  | 0D0AA55A
 ```
 
 - LEN 表示 LEN 字段后到校验前的字节数（即 DATA 长度）
 - CMD 位置可选：LEN 之前（默认）或 LEN 之后（此时 LEN = CMD+DATA）
 - 校验支持 XOR（默认）/ CRC16-MODBUS / CRC16-CCITT / CRC32 / 无
+- 字节序默认小端（little-endian），可配置
 
 ## 命令配置
 
 每条命令定义在 `protocol.json` 中，包含：
-- `type`: 查询（可发送，等待回包）或 上报（仅接收识别）
+- `type`: 下发（可发送，等待回包）或 上报（仅接收识别）
 - `tx_fields` / `rx_fields`: 发送/接收数据的字段拆分（名称+字节大小）
 - `tx_data_len` / `rx_data_len`: 从字段大小自动计算，用于收发校验
 
-查询命令支持多条并发发送，每条独立超时计时。
+下发命令支持多条并发发送，每条独立超时计时。
 
 ## 设计原则
 

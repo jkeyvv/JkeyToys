@@ -27,8 +27,8 @@ class ProtocolSettingsDialog(QDialog):
     def __init__(self, config: ProtocolConfig | None = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("协议帧格式配置")
-        self.setMinimumSize(500, 420)
-        self.resize(540, 460)
+        self.setMinimumSize(560, 480)
+        self.resize(600, 520)
         self._config = config or ProtocolConfig()
         self._init_ui()
         self._load_config(self._config)
@@ -39,6 +39,8 @@ class ProtocolSettingsDialog(QDialog):
         # ---- 帧格式配置 ----
         frame_group = QGroupBox("帧格式")
         form = QFormLayout(frame_group)
+        form.setSpacing(8)
+        form.setLabelAlignment(Qt.AlignRight)
 
         self.edit_header = QLineEdit()
         self.edit_header.setPlaceholderText("如: AA55 或 AA 55")
@@ -49,7 +51,7 @@ class ProtocolSettingsDialog(QDialog):
         form.addRow("Dummy (HEX):", self.edit_dummy)
 
         self.edit_tail = QLineEdit()
-        self.edit_tail.setPlaceholderText("如: 0D0A 或 0D 0A")
+        self.edit_tail.setPlaceholderText("如: 0D0A 或留空表示无帧尾")
         form.addRow("帧尾 (HEX):", self.edit_tail)
 
         self.spin_length_size = QSpinBox()
@@ -62,11 +64,11 @@ class ProtocolSettingsDialog(QDialog):
 
         self.combo_crc = QComboBox()
         self.combo_crc.addItems(CRC_TYPES)
-        form.addRow("CRC 算法:", self.combo_crc)
+        form.addRow("校验算法:", self.combo_crc)
 
         self.spin_crc_size = QSpinBox()
         self.spin_crc_size.setRange(0, 4)
-        form.addRow("CRC 字段 (字节):", self.spin_crc_size)
+        form.addRow("校验字段 (字节):", self.spin_crc_size)
 
         self.combo_byte_order = QComboBox()
         self.combo_byte_order.addItem("大端 (Big-Endian)", "big")
@@ -173,18 +175,19 @@ class ProtocolSettingsDialog(QDialog):
             parts.append(f"DUMMY [{cfg.dummy_byte.hex(' ').upper()}]")
         if cfg.cmd_before_len:
             if cfg.cmd_size > 0:
-                parts.append(f"CMD [{cfg.cmd_size}B]")
+                parts.append(f"命令 [{cfg.cmd_size}B]")
             if cfg.length_size > 0:
-                parts.append(f"LEN [{cfg.length_size}B] (DATA)")
+                parts.append(f"长度 [{cfg.length_size}B] (DATA)")
         else:
             if cfg.length_size > 0:
-                parts.append(f"LEN [{cfg.length_size}B] (CMD+DATA)")
+                parts.append(f"长度 [{cfg.length_size}B] (CMD+DATA)")
             if cfg.cmd_size > 0:
-                parts.append(f"CMD [{cfg.cmd_size}B]")
-        parts.append(f"DATA [NB]")
+                parts.append(f"命令 [{cfg.cmd_size}B]")
+        parts.append(f"数据 [NB]")
         if cfg.crc_size > 0:
-            parts.append(f"CRC [{cfg.crc_type} {cfg.crc_size}B]")
-        parts.append(f"帧尾 [{cfg.tail.hex(' ').upper()}]")
+            parts.append(f"校验 [{cfg.crc_type} {cfg.crc_size}B]")
+        if cfg.tail:
+            parts.append(f"帧尾 [{cfg.tail.hex(' ').upper()}]")
         parts.append(f"字节序 [{byte_order_str}]")
 
         # 示例帧

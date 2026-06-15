@@ -108,21 +108,27 @@ class ButtonEditDialog(QDialog):
         self.fields_layout = QVBoxLayout(self.fields_group)
         layout.addWidget(self.fields_group, 1)
 
-        # 连接信号
-        self.combo_cmd.currentIndexChanged.connect(self._update_fields)
+        # 编辑模式下按钮自身的 tx_fields（含 display_base）
+        self._edit_tx_fields: list[dict] | None = None
 
-        # 初始化字段
+        # 初始化字段（先不连信号，避免 setCurrentIndex 触发重绘）
         self._update_fields()
 
         # 填充编辑数据
         if edit_data:
             self.edit_name.setText(edit_data.get("name", ""))
+            self._edit_tx_fields = edit_data.get("tx_fields")
             for i, t in enumerate(self._templates):
                 if t["cmd"] == edit_data.get("cmd", ""):
                     self.combo_cmd.setCurrentIndex(i)
                     break
+            # 用按钮的 tx_fields（含 display_base）重建字段 UI
+            self._update_fields()
             # 填充字段值
             self._fill_field_values(edit_data.get("tx_data", ""))
+
+        # 信号连接放在初始化之后
+        self.combo_cmd.currentIndexChanged.connect(self._on_cmd_changed)
 
         # 按钮
         btn_layout = QHBoxLayout()
@@ -164,21 +170,36 @@ class ButtonEditDialog(QDialog):
         self._delete_clicked = True
         self.reject()
 
+    def _on_cmd_changed(self):
+        """用户手动切换命令时，重置名称和字段."""
+        idx = self.combo_cmd.currentIndex()
+        if 0 <= idx < len(self._templates):
+            self.edit_name.setText(self._templates[idx].get("name", ""))
+        self._edit_tx_fields = None
+        self._update_fields()
+
     def _update_fields(self):
         """根据选择的命令更新字段输入框."""
         # 清空旧的字段输入
         self._field_inputs.clear()
+        # 递归删除 fields_group 内所有子控件（包括嵌套布局中的）
+        for child_widget in self.fields_group.findChildren(QWidget):
+            child_widget.setParent(None)
+            child_widget.deleteLater()
         while self.fields_layout.count():
-            child = self.fields_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            self.fields_layout.takeAt(0)
 
         idx = self.combo_cmd.currentIndex()
         if idx < 0 or idx >= len(self._templates):
             return
 
         template = self._templates[idx]
-        tx_fields = template.get("tx_fields", [])
+        # 优先使用按钮自身的 tx_fields（含 display_base），否则用模板的
+        if self._edit_tx_fields is not None:
+            tx_fields = self._edit_tx_fields
+            self._edit_tx_fields = None  # 只用一次
+        else:
+            tx_fields = template.get("tx_fields", [])
 
         if not tx_fields:
             lbl = QLabel("该命令无 TX 字段")
@@ -187,7 +208,7 @@ class ButtonEditDialog(QDialog):
             return
 
         for f in tx_fields:
-            name = f.get("name", "Reserve")
+            name = f.get("name", "预留")
             size = f.get("size", 0)
             if size < 1:
                 continue
@@ -204,11 +225,18 @@ class ButtonEditDialog(QDialog):
             edit.setPlaceholderText("0")
             row.addWidget(edit, 1)
 
-            # 进制选择
+            # 进制选择（从字段配置恢复偏好）
             combo_base = QComboBox()
             combo_base.addItems(["DEC", "HEX"])
+            combo_base.setCurrentText(f.get("display_base", "DEC"))
             combo_base.setFixedWidth(70)
             row.addWidget(combo_base)
+
+            # 字节大小提示
+            hint = QLabel(f"{size}B")
+            hint.setStyleSheet("color: #888; font-size: 11px;")
+            hint.setFixedWidth(30)
+            row.addWidget(hint)
 
             self.fields_layout.addLayout(row)
             self._field_inputs.append((edit, combo_base, size))
@@ -230,10 +258,11 @@ class ButtonEditDialog(QDialog):
             value = data_bytes[offset: offset + size]
             offset += size
 
-            # 默认用十进制显示
             int_val = int.from_bytes(value, "big")
-            edit.setText(str(int_val))
-            combo_base.setCurrentText("DEC")
+            if combo_base.currentText() == "HEX":
+                edit.setText(f"{int_val:X}")
+            else:
+                edit.setText(str(int_val))
 
     def get_result(self) -> dict | None:
         """返回按钮配置."""
@@ -255,13 +284,16 @@ class ButtonEditDialog(QDialog):
                 text = edit.text().strip()
                 if not text:
                     text = "0"
+                base = combo_base.currentText()
+                max_val = (1 << (size * 8)) - 1
                 try:
-                    if combo_base.currentText() == "HEX":
+                    if base == "HEX":
                         val = int(text, 16)
                     else:
                         val = int(text)
+                    val = max(0, min(val, max_val))
                     data_bytes += val.to_bytes(size, "big")
-                except (ValueError, OverflowError):
+                except ValueError:
                     data_bytes += b"\x00" * size
             tx_data = data_bytes.hex().upper()
         else:
@@ -271,11 +303,26 @@ class ButtonEditDialog(QDialog):
             if tx_size > 0:
                 tx_data = "00" * tx_size
 
+        # 把进制偏好写回 tx_fields（深拷贝，不修改模板）
+        import copy
+        tx_fields = copy.deepcopy(cmd.get("tx_fields", []))
+        if self._field_inputs and tx_fields:
+            field_idx = 0
+            for f in tx_fields:
+                if f.get("size", 0) >= 1 and field_idx < len(self._field_inputs):
+                    _, combo_base, _ = self._field_inputs[field_idx]
+                    f["display_base"] = combo_base.currentText()
+                    field_idx += 1
+        # 确保所有字段都有 display_base
+        for f in tx_fields:
+            if "display_base" not in f:
+                f["display_base"] = "DEC"
+
         return {
             "name": name,
             "cmd": cmd["cmd"],
             "tx_data": tx_data,
-            "tx_fields": cmd.get("tx_fields", []),
+            "tx_fields": tx_fields,
             "rx_fields": cmd.get("rx_fields", []),
             "tx_data_len": cmd.get("tx_data_len", 0),
             "rx_data_len": cmd.get("rx_data_len", 0),
@@ -356,10 +403,10 @@ class ProtocolPanel(QWidget):
 
         ctrl_layout = QHBoxLayout()
 
-        # 字段显示进制切换
+        # 接收字段显示进制切换
         self._field_base = "DEC"  # HEX, DEC, BIN
-        self.btn_base = QPushButton("字段显示: DEC")
-        self.btn_base.setFixedWidth(100)
+        self.btn_base = QPushButton("接收字段显示: DEC")
+        self.btn_base.setFixedWidth(130)
         self.btn_base.clicked.connect(self._toggle_field_base)
         ctrl_layout.addWidget(self.btn_base)
 
@@ -408,11 +455,11 @@ class ProtocolPanel(QWidget):
             self.txt_log.verticalScrollBar().setValue(max_val)
 
     def _toggle_field_base(self):
-        """切换字段显示进制."""
+        """切换接收字段显示进制."""
         bases = ["HEX", "DEC", "BIN"]
         idx = bases.index(self._field_base)
         self._field_base = bases[(idx + 1) % len(bases)]
-        self.btn_base.setText(f"字段显示: {self._field_base}")
+        self.btn_base.setText(f"接收字段显示: {self._field_base}")
 
     # ========== 拖拽排序 ==========
 
@@ -483,7 +530,7 @@ class ProtocolPanel(QWidget):
 
     def _get_query_templates(self) -> list[dict]:
         """获取所有查询类型的命令模板."""
-        return [t for t in self._command_templates if t.get("type") == "查询"]
+        return [t for t in self._command_templates if t.get("type") == "下发"]
 
     def _add_button(self):
         """添加按钮."""
@@ -532,6 +579,7 @@ class ProtocolPanel(QWidget):
             "name": btn.query_name,
             "cmd": btn.cmd,
             "tx_data": btn.tx_data,
+            "tx_fields": btn.tx_fields,
         }
         dialog = ButtonEditDialog(templates, edit_data, self)
         result = dialog.exec()
@@ -590,7 +638,8 @@ class ProtocolPanel(QWidget):
 
     def _on_query_clicked(self, btn: QueryButton):
         try:
-            cmd = int(btn.cmd, 16) if btn.cmd.startswith("0x") else int(btn.cmd, 16)
+            cmd_hex = btn.cmd.replace(" ", "")
+            cmd = int(cmd_hex, 16)
         except ValueError:
             self._append_log("ERROR", f"命令格式错误: {btn.cmd}", QColor("#f44336"))
             return
@@ -696,7 +745,7 @@ class ProtocolPanel(QWidget):
             if t.get("type") != "上报":
                 continue
             try:
-                report_cmd = int(t["cmd"], 16) if t["cmd"].startswith("0x") else int(t["cmd"], 16)
+                report_cmd = int(t["cmd"].replace(" ", ""), 16)
                 if report_cmd == cmd:
                     return t.get("name"), t
             except (ValueError, KeyError):
@@ -712,14 +761,14 @@ class ProtocolPanel(QWidget):
         return ""
 
     def _format_fields(self, data: bytes, fields: list[dict]) -> str:
-        """格式化字段数据，返回紧凑的字段显示."""
+        """格式化字段数据，返回紧凑的接收字段显示."""
         if not fields or not data:
             return ""
 
         parts = []
         offset = 0
         for field in fields:
-            name = field.get("name", "Reserve")
+            name = field.get("name", "预留")
             size = field.get("size", 0)
 
             if size <= 0:

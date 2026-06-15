@@ -4,17 +4,48 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
-    QTableWidgetItem, QPushButton,
-    QAbstractItemView, QHeaderView, QLabel, QComboBox,
+    QTableWidgetItem, QPushButton, QStyledItemDelegate, QLineEdit,
+    QAbstractItemView, QHeaderView, QLabel, QComboBox, QStyle, QApplication,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QModelIndex
+from PySide6.QtGui import QPainter
 
 from core.protocol_config import ProtocolConfig
 
 
-CMD_TYPE_QUERY = "查询"
+CMD_TYPE_QUERY = "下发"
 CMD_TYPE_REPORT = "上报"
 CMD_TYPES = [CMD_TYPE_QUERY, CMD_TYPE_REPORT]
+
+
+class _EditorDelegate(QStyledItemDelegate):
+    """显示加左边距，编辑时不透明背景，避免重影."""
+
+    MARGIN = 10
+
+    def paint(self, painter: QPainter, option, index: QModelIndex):
+        opt = option
+        self.initStyleOption(opt, index)
+        opt.text = ""  # 清空文字，让基类只画背景
+        widget = option.widget
+        style = widget.style() if widget else QApplication.style()
+        style.drawPrimitive(QStyle.PE_PanelItemViewItem, opt, painter, widget)
+        text = index.data(Qt.DisplayRole) or ""
+        if text:
+            text_rect = option.rect.adjusted(self.MARGIN, 0, 0, 0)
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, text)
+
+    def sizeHint(self, option, index):
+        hint = super().sizeHint(option, index)
+        hint.setWidth(hint.width() + self.MARGIN)
+        return hint
+
+    def createEditor(self, parent, option, index):  # noqa: ARG002
+        editor = QLineEdit(parent)
+        editor.setAutoFillBackground(True)
+        editor.setTextMargins(self.MARGIN, 0, 0, 0)
+        return editor
+
 
 COL_TYPE = 1
 COL_TX_DATA = 3
@@ -26,7 +57,7 @@ def parse_fields_text(text: str) -> list[dict]:
     fields = []
     if not text or not text.strip() or text.strip() == "-":
         return fields
-    for part in text.replace("，", ",").split(","):
+    for part in text.replace("，", ",").replace("|", ",").split(","):
         part = part.strip()
         if not part:
             continue
@@ -51,11 +82,11 @@ def fields_to_text(fields: list[dict]) -> str:
         return ""
     parts = []
     for f in fields:
-        name = f.get("name", "Reserve")
+        name = f.get("name", "预留")
         size = f.get("size", 0)
         if size >= 1:
             parts.append(f"{name}:{size}B")
-    return ", ".join(parts)
+    return " | ".join(parts)
 
 
 def calc_fields_size(fields: list[dict]) -> int:
@@ -74,6 +105,7 @@ class FieldsEditDialog(QDialog):
 
     def _init_ui(self, fields: list[dict]):
         layout = QVBoxLayout(self)
+        layout.setSpacing(8)
 
         hint = QLabel("双击单元格编辑，字节最小为 1")
         hint.setStyleSheet("color: #888; font-style: italic; font-size: 11px;")
@@ -87,42 +119,50 @@ class FieldsEditDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        self.table.setItemDelegate(_EditorDelegate(self.table))
+
+        self.table.cellChanged.connect(self._on_cell_changed)
         layout.addWidget(self.table)
 
         for f in fields:
-            self._append_row(f.get("name", "Reserve"), f.get("size", 0))
+            self._append_row(f.get("name", "预留"), f.get("size", 0))
 
-        toolbar = QHBoxLayout()
+        # 底部工具栏：左侧操作按钮，右侧确定取消
+        bottom = QHBoxLayout()
 
         btn_add = QPushButton("+ 添加")
         btn_add.clicked.connect(self._add_row)
-        toolbar.addWidget(btn_add)
+        bottom.addWidget(btn_add)
 
         btn_del = QPushButton("删除")
         btn_del.clicked.connect(self._del_row)
-        toolbar.addWidget(btn_del)
+        bottom.addWidget(btn_del)
 
         btn_up = QPushButton("↑")
         btn_up.setFixedWidth(36)
         btn_up.clicked.connect(self._move_up)
-        toolbar.addWidget(btn_up)
+        bottom.addWidget(btn_up)
 
         btn_down = QPushButton("↓")
         btn_down.setFixedWidth(36)
         btn_down.clicked.connect(self._move_down)
-        toolbar.addWidget(btn_down)
+        bottom.addWidget(btn_down)
 
-        toolbar.addStretch()
+        bottom.addStretch()
 
         btn_ok = QPushButton("确定")
         btn_ok.clicked.connect(self.accept)
-        toolbar.addWidget(btn_ok)
+        bottom.addWidget(btn_ok)
 
         btn_cancel = QPushButton("取消")
         btn_cancel.clicked.connect(self.reject)
-        toolbar.addWidget(btn_cancel)
+        bottom.addWidget(btn_cancel)
 
-        layout.addLayout(toolbar)
+        layout.addLayout(bottom)
+
+    def _on_cell_changed(self):
+        self.table.resizeColumnsToContents()
+        self.table.viewport().update()
 
     def _auto_fit(self):
         """根据内容自适应列宽和窗口大小."""
@@ -135,8 +175,8 @@ class FieldsEditDialog(QDialog):
         header_h = self.table.horizontalHeader().height()
         table_h = header_h + row_h * visible_rows + 10
 
-        ideal_w = max(total_cols, 340)
-        ideal_h = table_h + 100
+        ideal_w = max(total_cols, 380)
+        ideal_h = table_h + 110
 
         screen = self.screen()
         if screen:
@@ -144,16 +184,16 @@ class FieldsEditDialog(QDialog):
             ideal_h = min(ideal_h, int(screen.availableGeometry().height() * 0.7))
 
         self.resize(ideal_w, ideal_h)
-        self.setMinimumSize(max(300, min(ideal_w, 340)), max(200, min(ideal_h, 260)))
+        self.setMinimumSize(340, 240)
 
-    def _append_row(self, name: str = "Reserve", size: int = 1):
+    def _append_row(self, name: str = "预留", size: int = 1):
         row = self.table.rowCount()
         self.table.insertRow(row)
         self.table.setItem(row, 0, QTableWidgetItem(name))
         self.table.setItem(row, 1, QTableWidgetItem(str(size)))
 
     def _add_row(self):
-        self._append_row("Reserve", 1)
+        self._append_row("预留", 1)
         self.table.setCurrentCell(self.table.rowCount() - 1, 0)
         self.table.editItem(self.table.item(self.table.rowCount() - 1, 0))
 
@@ -188,7 +228,7 @@ class FieldsEditDialog(QDialog):
         for row in range(self.table.rowCount()):
             name_item = self.table.item(row, 0)
             size_item = self.table.item(row, 1)
-            name = name_item.text().strip() if name_item else "Reserve"
+            name = name_item.text().strip() if name_item else "预留"
             try:
                 size = int(size_item.text().strip()) if size_item else 0
             except ValueError:
@@ -218,6 +258,8 @@ class ProtocolEditorDialog(QDialog):
         self._auto_fit()
 
     def _init_ui(self, commands: list[dict]):
+        self._current_combo: QComboBox | None = None
+
         layout = QVBoxLayout(self)
 
         title = QLabel("双击「发送数据」或「接收数据」列可编辑字段定义")
@@ -232,7 +274,10 @@ class ProtocolEditorDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        self.table.setItemDelegate(_EditorDelegate(self.table))
+
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        self.table.cellChanged.connect(self._on_cell_changed)
 
         layout.addWidget(self.table)
 
@@ -279,6 +324,10 @@ class ProtocolEditorDialog(QDialog):
 
         self._load_commands(commands)
 
+    def _on_cell_changed(self):
+        self.table.resizeColumnsToContents()
+        self.table.viewport().update()
+
     def _load_commands(self, commands: list[dict]):
         for item in commands:
             cmd_type = item.get("type", CMD_TYPE_QUERY)
@@ -320,10 +369,16 @@ class ProtocolEditorDialog(QDialog):
             self._open_fields_editor(row, "rx")
 
     def _open_type_combo(self, row: int):
+        # 清理上一次残留的 combo，防止重叠
+        if self._current_combo is not None:
+            self._current_combo.deleteLater()
+            self._current_combo = None
+
         item = self.table.item(row, COL_TYPE)
         current = item.text() if item else CMD_TYPE_QUERY
 
         combo = QComboBox(self)
+        self._current_combo = combo
         combo.addItems(CMD_TYPES)
         combo.setCurrentText(current)
 
@@ -335,25 +390,26 @@ class ProtocolEditorDialog(QDialog):
 
         def on_selected(text: str):
             old_type = self.table.item(row, COL_TYPE).text() if self.table.item(row, COL_TYPE) else ""
-            self.table.setItem(row, COL_TYPE, QTableWidgetItem(text))
+            new_item = QTableWidgetItem(text)
+            new_item.setFlags(new_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(row, COL_TYPE, new_item)
             if old_type != text:
                 self._update_row_for_type(row, text)
+            if self._current_combo is combo:
+                self._current_combo = None
             combo.deleteLater()
 
         combo.currentTextChanged.connect(on_selected)
-        combo.activated.connect(lambda: combo.deleteLater())
 
     def _update_row_for_type(self, row: int, cmd_type: str):
         tx_item = self.table.item(row, COL_TX_DATA)
         if cmd_type == CMD_TYPE_REPORT:
             if tx_item:
                 tx_item.setText("-")
-                tx_item.setFlags(tx_item.flags() & ~Qt.ItemIsEditable)
         else:
             if tx_item:
                 if tx_item.text() == "-":
-                    tx_item.setText("保留")
-                tx_item.setFlags(tx_item.flags() | Qt.ItemIsEditable)
+                    tx_item.setText("预留")
 
     def _open_fields_editor(self, row: int, direction: str):
         """打开字段编辑弹窗."""
@@ -385,8 +441,11 @@ class ProtocolEditorDialog(QDialog):
                     tx_fields: list[dict] | None = None, rx_fields: list[dict] | None = None):
         row = self.table.rowCount()
         self.table.insertRow(row)
+
         self.table.setItem(row, 0, QTableWidgetItem(name))
-        self.table.setItem(row, 1, QTableWidgetItem(cmd_type))
+        type_item = QTableWidgetItem(cmd_type)
+        type_item.setFlags(type_item.flags() & ~Qt.ItemIsEditable)
+        self.table.setItem(row, 1, type_item)
         self.table.setItem(row, 2, QTableWidgetItem(cmd))
 
         if cmd_type == CMD_TYPE_REPORT:
@@ -394,9 +453,13 @@ class ProtocolEditorDialog(QDialog):
             tx_item.setFlags(tx_item.flags() & ~Qt.ItemIsEditable)
             self.table.setItem(row, COL_TX_DATA, tx_item)
         else:
-            self.table.setItem(row, COL_TX_DATA, QTableWidgetItem(fields_to_text(tx_fields or [])))
+            tx_item = QTableWidgetItem(fields_to_text(tx_fields or []))
+            tx_item.setFlags(tx_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(row, COL_TX_DATA, tx_item)
 
-        self.table.setItem(row, COL_RX_DATA, QTableWidgetItem(fields_to_text(rx_fields or [])))
+        rx_item = QTableWidgetItem(fields_to_text(rx_fields or []))
+        rx_item.setFlags(rx_item.flags() & ~Qt.ItemIsEditable)
+        self.table.setItem(row, COL_RX_DATA, rx_item)
 
     def _add_row(self, cmd_type: str = CMD_TYPE_QUERY):
         self._append_row("", "01", cmd_type, [], [])

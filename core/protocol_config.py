@@ -15,15 +15,15 @@ class ProtocolConfig:
     byte_order 控制多字节字段的字节序（big=大端, little=小端）。
     """
 
-    header: bytes = b"\xAA\x55"            # 帧头
+    header: bytes = b"\xAA\x55\x5A\xA5"    # 帧头
     dummy_byte: bytes = b""                # 帧头后的 Dummy 字节（空=无）
-    tail: bytes = b"\x0D\x0A"              # 帧尾
-    length_size: int = 1                   # 长度字段字节数
-    cmd_size: int = 1                      # 命令字段字节数
+    tail: bytes = b"\x0D\x0A\xA5\x5A"     # 帧尾
+    length_size: int = 2                   # 长度字段字节数
+    cmd_size: int = 2                      # 命令字段字节数
     crc_size: int = 1                      # CRC 字段字节数（0 = 无 CRC）
     crc_type: str = "XOR"                  # CRC 算法类型
     cmd_before_len: bool = True            # True=帧头+CMD+LEN+DATA, False=帧头+LEN+CMD+DATA
-    byte_order: str = "big"                # 字节序：big=大端, little=小端
+    byte_order: str = "little"             # 字节序：big=大端, little=小端
     query_timeout_ms: int = 3000           # 查询超时时间（毫秒）
 
     def to_dict(self) -> dict:
@@ -49,12 +49,12 @@ class ProtocolConfig:
             header=bytes.fromhex(data["header"]),
             dummy_byte=bytes.fromhex(dummy_str) if dummy_str else b"",
             tail=bytes.fromhex(data["tail"]),
-            length_size=data.get("length_size", 1),
-            cmd_size=data.get("cmd_size", 1),
-            crc_size=data.get("crc_size", 2),
-            crc_type=data.get("crc_type", "CRC16-MODBUS"),
+            length_size=data.get("length_size", 2),
+            cmd_size=data.get("cmd_size", 2),
+            crc_size=data.get("crc_size", 1),
+            crc_type=data.get("crc_type", "XOR"),
             cmd_before_len=data.get("cmd_before_len", True),
-            byte_order=data.get("byte_order", "big"),
+            byte_order=data.get("byte_order", "little"),
             query_timeout_ms=data.get("query_timeout_ms", 3000),
         )
 
